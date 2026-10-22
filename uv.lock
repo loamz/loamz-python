@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [manifest]
@@ -329,7 +329,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28,<1" },
-    { name = "httpx", extras = ["http2"], marker = "extra == 'http2'", specifier = ">=0.28,<1" },
+    { name = "httpx", extras = ["http2"], marker = "extra == 'http2'", specifier = ">=0.28.1,<1" },
     { name = "loamz-core", editable = "sdk/python/core" },
     { name = "loamz-identity", editable = "sdk/python/identity" },
     { name = "polars", marker = "extra == 'arrow'", specifier = ">=1.44.2,<2" },

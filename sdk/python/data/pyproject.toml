@@ -11,7 +11,7 @@ dependencies = ["httpx>=0.28,<1", "loamz-core", "loamz-identity"]
 # Arrow/Polars results (`ld.sql`, `ld.arrow`, `ld.stream`); the code-interpreter sandbox image installs this extra.
 arrow = ["polars>=1.44.2,<2", "pyarrow>=22,<27"]
 # HTTP/2 multiplexing for the async client, used automatically when installed.
-http2 = ["httpx[http2]>=0.28,<1"]
+http2 = ["httpx[http2]>=0.28.1,<1"]
 
 [dependency-groups]
 dev = [
