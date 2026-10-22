@@ -1,7 +1,7 @@
 # loamz-data
 
 Typed Python client for the Loamz Data API: governed SQL, catalog, files, documents, memory and privacy, sync and
-asyncio. **The core depends only on `httpx`, `loamz-core` and `loamz-identity`.** Clients follow the Azure SDK shape: `DataClient(endpoint, credential)`.
+asyncio. **The core depends only on `httpx`, `loamz-core` and `loamz-identity`.** Clients share one shape: `DataClient(endpoint, credential)`.
 
 ```bash
 pip install loamz-data            # core
@@ -44,7 +44,7 @@ Idempotent requests are retried with jittered backoff on 429, 502, 503, 504 and 
 
 RFC 9457 problems, one class per problem `code`, named like the server's typed errors (`NotFoundError`,
 `ForbiddenError`, `InsufficientScopeError`, `ConflictError`, `PreconditionFailedError`, `QuotaExceededError`,
-`RateLimitedError`, `ServiceUnavailableError`, …), all `HttpResponseError` (`loamz.core.exceptions`, with Azure-style aliases such as `ResourceNotFoundError`), each with `status`, `code`, `detail` and
+`RateLimitedError`, `ServiceUnavailableError`, …), all `HttpResponseError` (`loamz.core.exceptions`, with aliases such as `ResourceNotFoundError`), each with `status`, `code`, `detail` and
 `request_id`.
 
 ## Namespaces

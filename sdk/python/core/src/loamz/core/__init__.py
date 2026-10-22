@@ -1,6 +1,6 @@
 """Shared foundation of the Loamz client libraries.
 
-- `loamz.core.exceptions`   typed errors, one class per problem `code` (and Azure-style aliases)
+- `loamz.core.exceptions`   typed errors, one class per problem `code` (and common aliases)
 - `loamz.core.transport`    the sync and async HTTP transports: credentials, retries, trace context
 - `loamz.core.credentials`  the token-credential protocol
 - `loamz.core.paging`       lazy pagers (`ItemPaged`, `AsyncItemPaged`)

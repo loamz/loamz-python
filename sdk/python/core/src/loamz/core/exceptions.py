@@ -186,7 +186,7 @@ _BY_STATUS: dict[int, type[HttpResponseError]] = {
 }
 
 
-# Azure-style names for the same classes, so code written against any cloud SDK reads the same here.
+# Common alternative names for the same classes.
 ResourceNotFoundError = NotFoundError
 ResourceExistsError = ConflictError
 ClientAuthenticationError = UnauthenticatedError

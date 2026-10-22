@@ -1,4 +1,4 @@
-"""The Azure SDK naming standard: verbs are list_/get_/create_/update_/delete_/begin_ or a plain verb phrase, and the
+"""The client naming standard: verbs are list_/get_/create_/update_/delete_/begin_ or a plain verb phrase, and the
 asyncio client has the same methods as the sync one."""
 
 import inspect

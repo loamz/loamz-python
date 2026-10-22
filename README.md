@@ -1,6 +1,6 @@
 # loamz-python
 
-Python client libraries for Loamz, in the style of the Azure and Google Cloud SDKs: one namespace (`loamz`), one
+Python client libraries for Loamz, with one consistent naming standard: one namespace (`loamz`), one
 distribution per service.
 
 | Distribution | Import | What it is |
