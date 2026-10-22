@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "loamz",
+    "loamz-agents",
     "loamz-core",
     "loamz-data",
     "loamz-identity",
@@ -258,6 +259,7 @@ name = "loamz"
 version = "0.1.0"
 source = { editable = "meta/loamz" }
 dependencies = [
+    { name = "loamz-agents" },
     { name = "loamz-core" },
     { name = "loamz-data" },
     { name = "loamz-identity" },
@@ -265,9 +267,43 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "loamz-agents", editable = "sdk/python/agents" },
     { name = "loamz-core", editable = "sdk/python/core" },
     { name = "loamz-data", editable = "sdk/python/data" },
     { name = "loamz-identity", editable = "sdk/python/identity" },
+]
+
+[[package]]
+name = "loamz-agents"
+version = "0.1.0"
+source = { editable = "sdk/python/agents" }
+dependencies = [
+    { name = "httpx" },
+    { name = "loamz-core" },
+    { name = "loamz-identity" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "loamz-core", editable = "sdk/python/core" },
+    { name = "loamz-identity", editable = "sdk/python/identity" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9" },
+    { name = "pytest-asyncio", specifier = ">=1.4" },
+    { name = "pytest-timeout", specifier = ">=2.3" },
+    { name = "pytest-xdist", specifier = ">=3.6" },
 ]
 
 [[package]]

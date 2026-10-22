@@ -33,6 +33,7 @@ jobs:
             loamz-core
             loamz-identity
             loamz-data
+            loamz-agents
             deps
             ci
             repo

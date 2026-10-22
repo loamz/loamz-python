@@ -2,7 +2,7 @@ name: Release
 
 # release-please keeps one release PR. Merging it tags every released component (`<component>-v<version>`) and
 # this workflow publishes the released distributions to PyPI (trusted publishing) in dependency order:
-#   tier 1 loamz-core; tier 2 loamz-identity; tier 3 loamz-data; tier 4 loamz (the meta package).
+#   tier 1 loamz-core; tier 2 loamz-identity; tier 3 loamz-data and loamz-agents; tier 4 loamz (the meta package).
 on:
   push:
     branches: [main]
@@ -51,9 +51,16 @@ jobs:
     with: { name: loamz-data, dir: sdk/python/data, released: "${{ needs.release-please.outputs.released }}" }
     permissions: { contents: read, id-token: write }
 
+  agents:
+    needs: [release-please, identity]
+    if: always() && needs.release-please.outputs.tags == 'true' && needs.identity.result != 'failure'
+    uses: ./.github/workflows/_publish.yml
+    with: { name: loamz-agents, dir: sdk/python/agents, released: "${{ needs.release-please.outputs.released }}" }
+    permissions: { contents: read, id-token: write }
+
   meta:
-    needs: [release-please, data]
-    if: always() && needs.release-please.outputs.tags == 'true' && needs.data.result != 'failure'
+    needs: [release-please, data, agents]
+    if: always() && needs.release-please.outputs.tags == 'true' && needs.data.result != 'failure' && needs.agents.result != 'failure'
     uses: ./.github/workflows/_publish.yml
     with: { name: loamz, dir: meta/loamz, released: "${{ needs.release-please.outputs.released }}" }
     permissions: { contents: read, id-token: write }

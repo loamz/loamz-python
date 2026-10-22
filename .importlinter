@@ -17,6 +17,7 @@ source_modules =
 forbidden_modules =
     loamz.identity
     loamz.data
+    loamz.agents
     loamz.engine
     loamz.server
 
@@ -27,6 +28,7 @@ source_modules =
     loamz.core
     loamz.identity
     loamz.data
+    loamz.agents
 forbidden_modules =
     loamz.engine
     loamz.server

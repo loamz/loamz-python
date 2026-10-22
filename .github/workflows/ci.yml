@@ -40,6 +40,7 @@ jobs:
           - { name: loamz-core, dir: sdk/python/core }
           - { name: loamz-identity, dir: sdk/python/identity }
           - { name: loamz-data, dir: sdk/python/data }
+          - { name: loamz-agents, dir: sdk/python/agents }
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

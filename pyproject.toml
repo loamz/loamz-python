@@ -1,12 +1,13 @@
 # Virtual workspace root: no package of its own. One lockfile (uv.lock) pins every client distribution so they are
 # always tested together. `uv sync --all-packages` installs them; `uv run --package X ...` runs one.
 [tool.uv.workspace]
-members = ["sdk/python/core", "sdk/python/identity", "sdk/python/data", "meta/loamz"]
+members = ["sdk/python/core", "sdk/python/identity", "sdk/python/data", "sdk/python/agents", "meta/loamz"]
 
 [tool.uv.sources]
 loamz-core = { workspace = true }
 loamz-identity = { workspace = true }
 loamz-data = { workspace = true }
+loamz-agents = { workspace = true }
 loamz = { workspace = true }
 
 [dependency-groups]
