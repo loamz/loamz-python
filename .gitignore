@@ -1,0 +1,34 @@
+# Workspace-wide. Each package also has its own .gitignore.
+.venv/
+node_modules/
+.pnpm-store/
+.next/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.import_linter_cache/
+.hypothesis/
+.env
+.env.*
+!.env.example
+*.pem
+!**/tests/**/*.pem
+.workspace/
+.DS_Store
+
+# Agent worktrees (local only)
+.claude/worktrees/
+node_modules
+.next
+next-env.d.ts
+*.tsbuildinfo
+data/workspace/public/monaco/
+
+# runtime artifacts
+*.log
+.loamz/
+*.db
+
+# local Rust experiments
+loamz-rs/target/

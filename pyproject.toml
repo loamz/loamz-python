@@ -1,0 +1,24 @@
+# Virtual workspace root: no package of its own. One lockfile (uv.lock) pins every client distribution so they are
+# always tested together. `uv sync --all-packages` installs them; `uv run --package X ...` runs one.
+[tool.uv.workspace]
+members = ["sdk/python/core", "sdk/python/identity", "sdk/python/data", "meta/loamz"]
+
+[tool.uv.sources]
+loamz-core = { workspace = true }
+loamz-identity = { workspace = true }
+loamz-data = { workspace = true }
+loamz = { workspace = true }
+
+[dependency-groups]
+dev = ["ruff>=0.15.0", "import-linter>=2.11", "pytest>=9.0", "pytest-asyncio>=1.4"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+ignore = ["B008"]  # RetryPolicy() is an immutable default
+
+[tool.ruff.lint.isort]
+known-first-party = ["loamz"]

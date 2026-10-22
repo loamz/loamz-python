@@ -1,0 +1,59 @@
+name: Release
+
+# release-please keeps one release PR. Merging it tags every released component (`<component>-v<version>`) and
+# this workflow publishes the released distributions to PyPI (trusted publishing) in dependency order:
+#   tier 1 loamz-core; tier 2 loamz-identity; tier 3 loamz-data; tier 4 loamz (the meta package).
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      released: ${{ steps.rp.outputs.paths_released }}
+      tags: ${{ steps.rp.outputs.releases_created }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  core:
+    needs: release-please
+    if: needs.release-please.outputs.tags == 'true'
+    uses: ./.github/workflows/_publish.yml
+    with: { name: loamz-core, dir: sdk/python/core, released: "${{ needs.release-please.outputs.released }}" }
+    permissions: { contents: read, id-token: write }
+
+  identity:
+    needs: [release-please, core]
+    if: always() && needs.release-please.outputs.tags == 'true' && needs.core.result != 'failure'
+    uses: ./.github/workflows/_publish.yml
+    with: { name: loamz-identity, dir: sdk/python/identity, released: "${{ needs.release-please.outputs.released }}" }
+    permissions: { contents: read, id-token: write }
+
+  data:
+    needs: [release-please, identity]
+    if: always() && needs.release-please.outputs.tags == 'true' && needs.identity.result != 'failure'
+    uses: ./.github/workflows/_publish.yml
+    with: { name: loamz-data, dir: sdk/python/data, released: "${{ needs.release-please.outputs.released }}" }
+    permissions: { contents: read, id-token: write }
+
+  meta:
+    needs: [release-please, data]
+    if: always() && needs.release-please.outputs.tags == 'true' && needs.data.result != 'failure'
+    uses: ./.github/workflows/_publish.yml
+    with: { name: loamz, dir: meta/loamz, released: "${{ needs.release-please.outputs.released }}" }
+    permissions: { contents: read, id-token: write }

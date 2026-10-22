@@ -1,0 +1,32 @@
+# Client rules. Run: uv run lint-imports --config .importlinter
+#   loamz.core      transport, errors, credentials protocol, paging, polling   (the floor)
+#   loamz.identity  credentials that talk to an identity provider
+#   loamz.data      client for Loamz Data
+# Clients stay thin: they never import an engine or a server.
+[importlinter]
+root_packages =
+    loamz
+include_external_packages = False
+exclude_type_checking_imports = True
+
+[importlinter:contract:core-is-the-floor]
+name = loamz.core imports no other Loamz package
+type = forbidden
+source_modules =
+    loamz.core
+forbidden_modules =
+    loamz.identity
+    loamz.data
+    loamz.engine
+    loamz.server
+
+[importlinter:contract:clients-are-thin]
+name = the client SDK never imports an engine or a server
+type = forbidden
+source_modules =
+    loamz.core
+    loamz.identity
+    loamz.data
+forbidden_modules =
+    loamz.engine
+    loamz.server

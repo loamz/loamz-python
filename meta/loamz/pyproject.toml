@@ -7,12 +7,6 @@ license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = ["loamz-core", "loamz-identity", "loamz-data"]
 
-[project.optional-dependencies]
-# the embeddable engines (SQL, files, vectors, documents, the durable agent runtime)
-engine = ["loamz-engine"]
-# the open server: the data platform and agent hosting
-server = ["loamz-server"]
-
 [build-system]
 requires = ["uv_build>=0.11.16,<0.12"]
 build-backend = "uv_build"

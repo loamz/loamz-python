@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint and import contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --all-packages --all-groups
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen ruff format --check .
+      - run: uv run --frozen lint-imports --config .importlinter
+
+  test:
+    name: Python ${{ matrix.python }} / ${{ matrix.package.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.14"]
+        package:
+          - { name: loamz-core, dir: sdk/python/core }
+          - { name: loamz-identity, dir: sdk/python/identity }
+          - { name: loamz-data, dir: sdk/python/data }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --frozen --all-packages --all-groups
+      - working-directory: ${{ matrix.package.dir }}
+        run: uv run --frozen --package ${{ matrix.package.name }} pytest -q -n 4 --timeout=120
+
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: echo "$RESULTS" | jq -e '[.[] | .result] | all(. == "success" or . == "skipped")' > /dev/null
