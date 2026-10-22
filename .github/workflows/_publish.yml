@@ -33,9 +33,9 @@ jobs:
             echo "go=false" >> "$GITHUB_OUTPUT"
             echo "$DIR was not released; nothing to publish."
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.gate.outputs.go == 'true'
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         if: steps.gate.outputs.go == 'true'
       - name: Build
         if: steps.gate.outputs.go == 'true'
