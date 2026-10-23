@@ -130,6 +130,12 @@ class ServiceUnavailableError(HttpResponseError):
     retryable = True
 
 
+class LegalHoldError(HttpResponseError):
+    """423: the data is under a legal hold; erasure and retention cannot remove it until the hold is released."""
+
+    code = "legal-hold"
+
+
 class ResultTooLargeError(HttpResponseError):
     """The result is bigger than this process should hold. Aggregate in SQL, or use `stream()`."""
 
@@ -162,6 +168,7 @@ ERRORS: dict[str, type[HttpResponseError]] = {
         ScopeViolationError,
         PreconditionFailedError,
         QuotaExceededError,
+        LegalHoldError,
         VectorSpaceError,
         SchemaVersionError,
         RateLimitedError,
@@ -219,6 +226,7 @@ __all__ = [
     "ForbiddenError",
     "InsufficientScopeError",
     "InvalidRequestError",
+    "LegalHoldError",
     "NotFoundError",
     "PreconditionFailedError",
     "QuotaExceededError",

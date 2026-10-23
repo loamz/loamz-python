@@ -31,6 +31,7 @@ from loamz.core.transport import STORAGE_RETRY, AsyncTransport, RetryPolicy, Syn
 from loamz.data.catalog import AsyncCatalog, AsyncTenants, Catalog, Tenants
 from loamz.data.documents import AsyncDocuments, Documents
 from loamz.data.files import AsyncFiles, Files, _part_etag, _storage_failure
+from loamz.data.governance import AccessTokens, AsyncAccessTokens, AsyncLegalHolds, LegalHolds
 from loamz.data.memory import AsyncMemory, Memory
 from loamz.data.privacy import AsyncErasure, AsyncExports, Erasure, Exports
 from loamz.data.sql import DEFAULT_MAX_BYTES, AsyncSql, Sql
@@ -96,6 +97,8 @@ class DataClient:
         self.memory = Memory(self._core)
         self.erasure = Erasure(self._core)
         self.exports = Exports(self._core)
+        self.legal_holds = LegalHolds(self._core)
+        self.access_tokens = AccessTokens(self._core)
 
     def __enter__(self) -> Self:
         return self
@@ -275,6 +278,8 @@ class AsyncDataClient:
         self.memory = AsyncMemory(self._core)
         self.erasure = AsyncErasure(self._core)
         self.exports = AsyncExports(self._core)
+        self.legal_holds = AsyncLegalHolds(self._core)
+        self.access_tokens = AsyncAccessTokens(self._core)
 
     async def __aenter__(self) -> Self:
         return self
