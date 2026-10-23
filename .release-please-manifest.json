@@ -1,7 +1,7 @@
 {
-  "sdk/python/core": "0.1.0",
+  "sdk/python/core": "0.2.0",
   "sdk/python/identity": "0.1.0",
-  "sdk/python/data": "0.1.0",
-  "sdk/python/agents": "0.1.0",
-  "meta/loamz": "0.1.0"
+  "sdk/python/data": "0.2.0",
+  "sdk/python/agents": "0.2.0",
+  "meta/loamz": "0.2.0"
 }

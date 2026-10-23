@@ -1,6 +1,6 @@
 [project]
 name = "loamz-agents"
-version = "0.1.0"
+version = "0.2.0"
 description = "Client for Loamz Agents: agents, threads, runs (streaming) and approvals (sync and async)."
 readme = "README.md"
 license = "Apache-2.0"

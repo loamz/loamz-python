@@ -1,6 +1,6 @@
 [project]
 name = "loamz"
-version = "0.1.0"
+version = "0.2.0"
 description = "Loamz: a governed data platform and durable agents built on it. Install the parts you use."
 readme = "README.md"
 license = "Apache-2.0"
