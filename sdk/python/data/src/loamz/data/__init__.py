@@ -13,8 +13,8 @@ Module-level helpers connect lazily and discover their connection, so agent code
     import loamz.data as ld
     df = ld.sql("SELECT ...")
 
-Inside a Loamz code-interpreter sandbox the connection is a Unix socket and a per-run token file mounted at
-`/run/loamz-data`. Elsewhere set `LOAMZ_ENDPOINT` and a credential (`LOAMZ_TOKEN`, or `LOAMZ_CLIENT_ID`,
+Inside a Loamz code-interpreter sandbox the connection is a Unix socket mounted at `/run/loamz-data`. The sandbox holds no
+credential: the platform's gateway behind the socket speaks for the run's user, so there is nothing for agent code to print. Elsewhere set `LOAMZ_ENDPOINT` and a credential (`LOAMZ_TOKEN`, or `LOAMZ_CLIENT_ID`,
 `LOAMZ_CLIENT_SECRET` and `LOAMZ_ISSUER`; see `loamz.identity`), or keep them in a `~/.loamz/config` profile.
 
 The core depends only on httpx. `ld.sql`, `ld.arrow` and `ld.stream` need the Arrow extra
@@ -40,9 +40,9 @@ _lock = threading.Lock()
 _default: DataClient | None = None
 
 
-def _sandbox() -> tuple[Path, Path] | None:
-    socket, token_file = SANDBOX_DIR / "api.sock", SANDBOX_DIR / "token"
-    return (socket, token_file) if socket.exists() else None
+def _sandbox() -> Path | None:
+    socket = SANDBOX_DIR / "api.sock"
+    return socket if socket.exists() else None
 
 
 def _from_environment(endpoint: str | None, credential: TokenSource) -> tuple[str, TokenSource]:
@@ -58,14 +58,8 @@ def connect(endpoint: str | None = None, credential: TokenSource = None) -> Data
     """A client for this environment: the sandbox socket if present, else the endpoint and credential given or found."""
     sandbox = _sandbox() if endpoint is None else None
     if sandbox:
-        socket, token_file = sandbox
-        # The run's token is a file the platform mounts; read it each time so a refreshed file is honoured and
-        # nothing keeps it in a variable agent code might print.
-        return DataClient(
-            SANDBOX_HOST,
-            lambda: token_file.read_text().strip(),
-            transport=httpx.HTTPTransport(uds=str(socket)),
-        )
+        # No credential: the gateway on the far end of the socket adds the run's identity itself.
+        return DataClient(SANDBOX_HOST, transport=httpx.HTTPTransport(uds=str(sandbox)))
     return DataClient(*_from_environment(endpoint, credential))
 
 
@@ -73,12 +67,7 @@ def aconnect(endpoint: str | None = None, credential: TokenSource = None) -> Asy
     """`connect()` for asyncio code (same discovery)."""
     sandbox = _sandbox() if endpoint is None else None
     if sandbox:
-        socket, token_file = sandbox
-        return AsyncDataClient(
-            SANDBOX_HOST,
-            lambda: token_file.read_text().strip(),
-            transport=httpx.AsyncHTTPTransport(uds=str(socket)),
-        )
+        return AsyncDataClient(SANDBOX_HOST, transport=httpx.AsyncHTTPTransport(uds=str(sandbox)))
     return AsyncDataClient(*_from_environment(endpoint, credential))
 
 

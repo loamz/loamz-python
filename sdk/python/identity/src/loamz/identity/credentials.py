@@ -10,8 +10,10 @@
 1. `LOAMZ_TOKEN`: a ready bearer token;
 2. `LOAMZ_CLIENT_ID` + `LOAMZ_CLIENT_SECRET` + `LOAMZ_ISSUER`: a service account;
 3. the profile in `~/.loamz/config` (`LOAMZ_PROFILE` picks one; default `default`): `token`, or `client_id`,
-   `client_secret` and `issuer`;
-4. inside a Loamz code-interpreter sandbox: the per-run token file at `/run/loamz-data/token`.
+   `client_secret` and `issuer`.
+
+Inside a Loamz code-interpreter sandbox there is no credential to find: the platform's gateway holds the run's identity and
+adds it to each request, so agent code can never read or print one (see `loamz.data.connect`).
 """
 
 from __future__ import annotations
@@ -27,7 +29,6 @@ import httpx
 
 from loamz.core.credentials import StaticTokenCredential, TokenCredential
 
-SANDBOX_TOKEN_FILE = Path("/run/loamz-data/token")
 CONFIG_FILE = Path("~/.loamz/config").expanduser()
 
 
@@ -95,11 +96,8 @@ def _from_settings(get: dict[str, str]) -> TokenCredential | None:
 class DefaultLoamzCredential:
     """The first credential the environment provides (see the module docstring). Resolved on first use."""
 
-    def __init__(
-        self, *, profile: str | None = None, sandbox_token_file: Path = SANDBOX_TOKEN_FILE
-    ):
+    def __init__(self, *, profile: str | None = None):
         self._profile = profile
-        self._sandbox = sandbox_token_file
         self._chosen: TokenCredential | None = None
 
     def _resolve(self) -> TokenCredential:
@@ -114,9 +112,6 @@ class DefaultLoamzCredential:
             chosen = _from_settings(env) or _from_settings(
                 _profile(self._profile or os.environ.get("LOAMZ_PROFILE", "default"))
             )
-            if chosen is None and self._sandbox.exists():
-                path = self._sandbox
-                chosen = StaticTokenCredential(lambda: path.read_text().strip())
             if chosen is None:
                 raise LookupError(
                     "no Loamz credential found: set LOAMZ_TOKEN, or LOAMZ_CLIENT_ID/LOAMZ_CLIENT_SECRET/LOAMZ_ISSUER, "
