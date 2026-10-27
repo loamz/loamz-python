@@ -109,7 +109,7 @@ class JwksSource:
             ) and now - self.attempted >= self.min_refresh:
                 try:
                     self._refresh()
-                except httpx.HTTPError, ValueError, KeyError, jwt.PyJWTError:
+                except (httpx.HTTPError, ValueError, KeyError, jwt.PyJWTError):
                     pass  # judged below: cached keys may still be inside the stale window
             if not self.keys or self.clock() - self.fetched > self.stale:
                 raise IdentityProviderUnavailable("Cannot reach the token issuer's key endpoint")
