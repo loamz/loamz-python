@@ -1,4 +1,4 @@
-"""The asyncio client: `from loamz.data.aio import DataClient`."""
+"""The asyncio client: ``from loamz.data.aio import DataClient``."""
 
 from loamz.data.client import AsyncDataClient as DataClient
 

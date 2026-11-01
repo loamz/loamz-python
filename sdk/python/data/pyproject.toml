@@ -1,7 +1,7 @@
 [project]
 name = "loamz-data"
 version = "0.1.0"
-description = "Client for Loamz Data: catalog, SQL, files, documents, memory and databases (sync and async)."
+description = "Client for Loamz Data: governed SQL and the catalog of one workspace (sync and async)."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"

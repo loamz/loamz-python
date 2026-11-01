@@ -7,15 +7,15 @@ distribution per service.
 | --- | --- | --- |
 | `loamz-core` | `loamz.core` | transport, retries, errors (`HttpResponseError`), paging (`ItemPaged`), long-running operations (`LROPoller`), tenancy rules |
 | `loamz-identity` | `loamz.identity` | credentials: `DefaultLoamzCredential`, `ClientSecretCredential` |
-| `loamz-data` | `loamz.data` | `DataClient`: catalog, SQL, files, documents, memory (sync and `loamz.data.aio`) |
+| `loamz-data` | `loamz.data` | `DataClient(endpoint, credential, workspace=…)`: governed SQL and the catalog of one workspace (sync and `loamz.data.aio`) |
 | `loamz` | | installs all of the above |
 
 ```python
 from loamz.data import DataClient
 from loamz.identity import DefaultLoamzCredential
 
-client = DataClient("https://data.example.com", DefaultLoamzCredential())
-df = client.sql("SELECT 1 AS one")
+client = DataClient("https://data.example.com", DefaultLoamzCredential(), workspace=workspace_id)
+df = client.sql("SELECT region, count(*) AS n FROM shop.main.sales GROUP BY 1")
 ```
 
 Clients are thin: they call the API and never import an engine or a server (enforced by `.importlinter`). The open

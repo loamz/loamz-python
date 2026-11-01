@@ -1,56 +1,91 @@
-"""`DataClient` (sync) and `AsyncDataClient` (asyncio): one pooled connection set per client.
+"""`DataClient` (sync) and `AsyncDataClient` (asyncio) for a Loamz Data workspace.
 
     from loamz.data import DataClient
     from loamz.identity import ClientSecretCredential
-    client = DataClient("https://data.example.com", credential=ClientSecretCredential(issuer, id, secret))
-    client.catalog.search("taxi")
-    client.sql.rows("SELECT borough, count(*) FROM main.nyc.yellow GROUP BY 1")      # JSON, no extras
-    client.sql("SELECT ...")                                                         # Polars ([arrow])
-    client.files.upload("main.ws.files", "reports/q3.csv", "q3.csv")
 
-    async with AsyncDataClient(endpoint, credential=my_async_token_function) as client:
-        await client.files.upload(...)
+    client = DataClient(endpoint, ClientSecretCredential(issuer, id, secret), workspace=workspace_id)
+    client.tables()                                   # ["shop.main.sales4", ...]: what you may read
+    client.rows("SELECT region, sum(amount) FROM shop.main.sales4 GROUP BY 1")
+    client.sql("SELECT ...")                          # a Polars DataFrame (the [arrow] extra)
 
-The core needs only httpx. Idempotent requests are retried on 429/502/503/504 (honouring
-`Retry-After`); every request carries a W3C `traceparent`; errors are `HttpResponseError` subclasses.
+Everything is scoped to one workspace. Statements run on the workspace's compute under the signed-in person's rights: a table
+you may not read is simply not there. Idempotent requests are retried on 429/502/503/504 (honouring `Retry-After`), every
+request carries a W3C `traceparent`, and errors are `HttpResponseError` subclasses.
 """
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-from typing import Any, Self
+from typing import Self
 
 import httpx
 
 from loamz.core.credentials import TokenSource
-from loamz.core.exceptions import HttpResponseError, NotFoundError
-from loamz.core.transport import STORAGE_RETRY, AsyncTransport, RetryPolicy, SyncTransport
-from loamz.data.catalog import AsyncCatalog, AsyncTenants, Catalog, Tenants
-from loamz.data.documents import AsyncDocuments, Documents
-from loamz.data.files import AsyncFiles, Files, _part_etag, _storage_failure
-from loamz.data.governance import AccessTokens, AsyncAccessTokens, AsyncLegalHolds, LegalHolds
-from loamz.data.memory import AsyncMemory, Memory
-from loamz.data.privacy import AsyncErasure, AsyncExports, Erasure, Exports
-from loamz.data.sql import DEFAULT_MAX_BYTES, AsyncSql, Sql
+from loamz.core.exceptions import HttpResponseError, InvalidRequestError, NotFoundError
+from loamz.core.transport import AsyncTransport, RetryPolicy, SyncTransport
+from loamz.data.models import Column, Json, JsonObject, QueryResult, TableInfo
 
 API_VERSION = "v1"
 DEFAULT_ENDPOINT = "http://127.0.0.1:8020"
-STORAGE_TIMEOUT = httpx.Timeout(30, read=600)
+_RUNNING = frozenset({"queued", "running"})
+_POLL_S = 0.7
 
-__all__ = ["API_VERSION", "DEFAULT_MAX_BYTES", "AsyncDataClient", "DataClient"]
+
+def _object(value: Json) -> JsonObject:
+    if not isinstance(value, dict):
+        raise HttpResponseError(
+            502, {"detail": "the server answered with something that is not an object"}
+        )
+    return value
 
 
-def _import_request(table: str, files: list[Path], mode, partitioning, file_format) -> dict:
-    return {
-        "table": table,
-        "mode": mode,
-        "format": file_format,
-        "partitioning": partitioning or [],
-        "files": [{"name": p.name, "size": p.stat().st_size} for p in files],
-    }
+def _items(value: Json) -> list[JsonObject]:
+    body = _object(value).get("items", [])
+    return [item for item in body if isinstance(item, dict)] if isinstance(body, list) else []
+
+
+def _text(obj: JsonObject, key: str) -> str:
+    value = obj.get(key, "")
+    return value if isinstance(value, str) else ""
+
+
+def result_of(run: JsonObject) -> QueryResult:
+    """The rows of a finished run, or the reason it did not finish."""
+    state = _text(run, "state")
+    if state != "succeeded":
+        reason = _text(run, "error") or f"the statement {state.replace('_', ' ')}"
+        raise InvalidRequestError(400, {"detail": reason})
+    body = run.get("result")
+    if not isinstance(body, dict):
+        raise HttpResponseError(502, {"detail": "a finished statement came back without a result"})
+    columns = tuple(
+        Column(_text(c, "name"), _text(c, "type"))
+        for c in (body.get("columns") or [])
+        if isinstance(c, dict)
+    )
+    raw_rows = body.get("rows")
+    rows = (
+        tuple(tuple(r) for r in raw_rows if isinstance(r, list))
+        if isinstance(raw_rows, list)
+        else ()
+    )
+    return QueryResult(columns, rows, bool(body.get("truncated")), _text(run, "id"))
+
+
+def table_info(entry: JsonObject, full_name: str, described: JsonObject) -> TableInfo:
+    raw = described.get("columns")
+    columns = tuple(
+        Column(_text(c, "name"), str(c.get("type", "")))
+        for c in (raw if isinstance(raw, list) else [])
+        if isinstance(c, dict)
+    )
+    props = described.get("properties")
+    properties = {str(k): str(v) for k, v in props.items()} if isinstance(props, dict) else {}
+    return TableInfo(
+        _text(entry, "id"), full_name, columns, _text(described, "current_snapshot"), properties
+    )
 
 
 class DataClient:
@@ -61,44 +96,25 @@ class DataClient:
         endpoint: str = DEFAULT_ENDPOINT,
         credential: TokenSource = None,
         *,
+        workspace: str,
         timeout: float = 600,
         transport: httpx.BaseTransport | None = None,
-        storage_transport: httpx.BaseTransport | None = None,
         retry: RetryPolicy | None = RetryPolicy(),
-        http2: bool | None = None,
-        traceparent: str | None = None,
         sleep: Callable[[float], None] = time.sleep,
-    ):
+    ) -> None:
+        if not workspace:
+            raise ValueError("a workspace id is needed: every call is scoped to one workspace")
         self.credential = credential
+        self.workspace = workspace
+        self._sleep = sleep
         self._core = SyncTransport(
-            base_url=endpoint.rstrip("/") + f"/api/{API_VERSION}",
+            base_url=endpoint.rstrip("/") + f"/api/{API_VERSION}/workspaces/{workspace}",
             credential=credential,
             timeout=timeout,
             transport=transport,
             retry=retry,
-            http2=http2,
-            traceparent=traceparent,
             sleep=sleep,
         )
-        # Presigned URLs: another host, no bearer token, no API trace headers.
-        self._storage = SyncTransport(
-            api=False,
-            timeout=STORAGE_TIMEOUT,
-            transport=storage_transport,
-            retry=STORAGE_RETRY if retry else None,
-            http2=http2,
-            sleep=sleep,
-        )
-        self.catalog = Catalog(self._core)
-        self.sql = Sql(self._core)
-        self.files = Files(self._core, self._storage)
-        self.tenants = Tenants(self._core)
-        self.documents = Documents(self._core)
-        self.memory = Memory(self._core)
-        self.erasure = Erasure(self._core)
-        self.exports = Exports(self._core)
-        self.legal_holds = LegalHolds(self._core)
-        self.access_tokens = AccessTokens(self._core)
 
     def __enter__(self) -> Self:
         return self
@@ -108,178 +124,96 @@ class DataClient:
 
     def close(self) -> None:
         self._core.close()
-        self._storage.close()
 
-    @property
-    def http(self) -> httpx.Client:
-        return self._core.http
-
-    def request(self, method: str, path: str, **kwargs: Any) -> Any:
-        """Any `/api/v1` call; returns the decoded JSON (None for an empty body)."""
-        return self._core.call(method, path, **kwargs)
-
-    # ------------------------------------------------------------------ queries (shortcuts)
-    def stream(self, query: str, **options: Any):
-        return self.sql.stream(query, **options)
-
-    def arrow(self, query: str, **options: Any):
-        return self.sql.arrow(query, **options)
-
-    # ------------------------------------------------------------------ catalog (shortcuts)
-    def catalogs(self) -> list[dict[str, Any]]:
-        return self.catalog.catalogs()
-
-    def schemas(self, catalog: str) -> list[dict[str, Any]]:
-        return self.catalog.schemas(catalog)
-
-    def tables(self, catalog: str, schema: str) -> list[dict[str, Any]]:
-        return self.catalog.tables(catalog, schema)
-
-    def table(self, full_name: str) -> dict[str, Any]:
-        return self.catalog.table(full_name)
-
-    def views(self, catalog: str, schema: str) -> list[dict[str, Any]]:
-        return self.catalog.views(catalog, schema)
-
-    def search(self, text: str = "", *, limit: int = 25) -> list[dict[str, Any]]:
-        """Tables and views you may read whose name, comment or a column matches `text`."""
-        return self.catalog.search(text, limit=limit)
-
-    def create_view(self, full_name: str, sql: str, comment: str | None = None) -> dict[str, Any]:
-        return self.catalog.create_view(full_name, sql, comment)
-
-    def create_schema(self, catalog: str, name: str, comment: str | None = None) -> dict[str, Any]:
-        return self.catalog.create_schema(catalog, name, comment)
-
-    def describe(self, full_name: str, *, sample: int = 5) -> dict[str, Any]:
-        """Columns, size, partitioning and a few sample rows of a table or view.
-
-        `sample` is a Polars DataFrame with the [arrow] extra, else a `QueryResult`."""
-        try:
-            info = {"kind": "table", **self.catalog.table(full_name)}
-        except NotFoundError:
-            info = {"kind": "view", **self.catalog.view(full_name)}
-        if sample:
-            query = f"SELECT * FROM {full_name} LIMIT {int(sample)}"
-            try:
-                info["sample"] = self.sql(query)
-            except ImportError:
-                info["sample"] = self.sql.rows(query)
-        return info
-
-    # ------------------------------------------------------------------ imports
-    def upload(
-        self,
-        table: str,
-        files: list[str | Path],
-        *,
-        mode: str = "create",
-        partitioning: list[dict[str, str]] | None = None,
-        file_format: str | None = None,
-        parallelism: int = 8,
-        wait: bool = True,
-        poll_seconds: float = 1.0,
-    ) -> dict[str, Any]:
-        """Upload local files straight to object storage, then ingest them into `table`."""
-        paths = [Path(f) for f in files]
-        created = self.request(
-            "POST", "/imports", json=_import_request(table, paths, mode, partitioning, file_format)
+    # ------------------------------------------------------------------ SQL
+    def run(self, query: str, *, limit: int = 1000, wait_s: int = 30) -> JsonObject:
+        """Submit a read-only statement and follow it to its end; the finished run, as the server describes it."""
+        run = _object(
+            self._core.call(
+                "POST", "/sql/statements", json={"sql": query, "limit": limit, "wait_s": wait_s}
+            )
         )
-        completions = []
-        with ThreadPoolExecutor(max_workers=parallelism) as pool:
-            for path, upload in zip(paths, created["uploads"], strict=True):
-                if upload["method"] == "PUT":
-                    pool.submit(self._put, upload["url"], path, 0, path.stat().st_size).result()
-                    completions.append({"key": upload["key"], "parts": []})
+        while _text(run, "state") in _RUNNING:
+            self._sleep(_POLL_S)
+            run = _object(self._core.call("GET", f"/runs/{_text(run, 'id')}"))
+        return run
+
+    def rows(self, query: str, *, limit: int = 1000) -> QueryResult:
+        """A statement's rows as plain values; works without the Arrow extra."""
+        return result_of(self.run(query, limit=limit))
+
+    def sql(self, query: str, *, limit: int = 1000):  # type: ignore[no-untyped-def]  # a polars.DataFrame, imported lazily
+        """A statement's rows as a Polars DataFrame (the `[arrow]` extra)."""
+        from loamz.data import _arrow
+
+        result = self.rows(query, limit=limit)
+        return _arrow.polars().DataFrame(
+            [list(r) for r in result.rows],
+            schema=[c.name for c in result.columns],
+            orient="row",
+        )
+
+    # ------------------------------------------------------------------ catalog
+    def _children(self, parent: str) -> list[JsonObject]:
+        suffix = f"?parent_id={parent}" if parent else ""
+        return _items(self._core.call("GET", f"/securables{suffix}"))
+
+    def tables(self) -> list[str]:
+        """The `catalog.schema.table` names you may read here."""
+        names: list[str] = []
+        for catalog in self._children(""):
+            for schema in self._children(_text(catalog, "id")):
+                if _text(schema, "kind") != "schema":
                     continue
-                size = upload["part_size"]
-                futures = [
-                    pool.submit(
-                        self._put, part["url"], path, (part["part_number"] - 1) * size, size
-                    )
-                    for part in upload["parts"]
-                ]
-                completions.append(
-                    {
-                        "key": upload["key"],
-                        "parts": [
-                            {"part_number": part["part_number"], "etag": future.result()}
-                            for part, future in zip(upload["parts"], futures, strict=True)
-                        ],
-                    }
-                )
-        record = self.request(
-            "POST",
-            f"/imports/{created['import']['id']}:complete",
-            json={"files": completions},
-            idempotent=True,
-        )
-        while wait and record["status"] not in {"succeeded", "failed"}:
-            time.sleep(poll_seconds)
-            record = self.request("GET", f"/imports/{record['id']}")
-        if record["status"] == "failed":
-            raise HttpResponseError(409, {"type": "import-failed", "detail": record.get("error")})
-        return record
+                for entry in self._children(_text(schema, "id")):
+                    if _text(entry, "kind") == "table":
+                        names.append(
+                            f"{_text(catalog, 'name')}.{_text(schema, 'name')}.{_text(entry, 'name')}"
+                        )
+        return sorted(names)
 
-    def _put(self, url: str, path: Path, offset: int, length: int) -> str:
-        with path.open("rb") as stream:
-            stream.seek(offset)
-            data = stream.read(length)
-        response = self._storage.send("PUT", url, content=data)
-        if response.status_code >= 400:
-            response.read()
-            raise _storage_failure(response)
-        return _part_etag(response)
+    def describe(self, full_name: str) -> TableInfo:
+        """The columns and snapshots of `catalog.schema.table`; not found when you may not read it."""
+        parts = full_name.split(".")
+        if len(parts) != 3:
+            raise InvalidRequestError(400, {"detail": "name a table as catalog.schema.table"})
+        parent = ""
+        entry: JsonObject = {}
+        for part in parts:
+            match = [c for c in self._children(parent) if _text(c, "name") == part]
+            if not match:
+                raise NotFoundError(
+                    404, {"detail": f"{full_name} was not found, or you may not read it"}
+                )
+            entry = match[0]
+            parent = _text(entry, "id")
+        return table_info(entry, full_name, _object(self._core.call("GET", f"/tables/{parent}")))
 
 
 class AsyncDataClient:
-    """asyncio client over one `httpx.AsyncClient` (HTTP/2 when `h2` is installed, else HTTP/1.1)."""
+    """Asyncio client. Safe to share across tasks."""
 
     def __init__(
         self,
         endpoint: str = DEFAULT_ENDPOINT,
         credential: TokenSource = None,
         *,
+        workspace: str,
         timeout: float = 600,
         transport: httpx.AsyncBaseTransport | None = None,
-        storage_transport: httpx.AsyncBaseTransport | None = None,
         retry: RetryPolicy | None = RetryPolicy(),
-        http2: bool | None = None,
-        traceparent: str | None = None,
-        sleep: Callable[[float], Any] | None = None,
-    ):
-        import asyncio
-
-        sleep = sleep or asyncio.sleep
+    ) -> None:
+        if not workspace:
+            raise ValueError("a workspace id is needed: every call is scoped to one workspace")
         self.credential = credential
+        self.workspace = workspace
         self._core = AsyncTransport(
-            base_url=endpoint.rstrip("/") + f"/api/{API_VERSION}",
+            base_url=endpoint.rstrip("/") + f"/api/{API_VERSION}/workspaces/{workspace}",
             credential=credential,
             timeout=timeout,
             transport=transport,
             retry=retry,
-            http2=http2,
-            traceparent=traceparent,
-            sleep=sleep,
         )
-        self._storage = AsyncTransport(
-            api=False,
-            timeout=STORAGE_TIMEOUT,
-            transport=storage_transport,
-            retry=STORAGE_RETRY if retry else None,
-            http2=http2,
-            sleep=sleep,
-        )
-        self.catalog = AsyncCatalog(self._core)
-        self.sql = AsyncSql(self._core)
-        self.files = AsyncFiles(self._core, self._storage)
-        self.tenants = AsyncTenants(self._core)
-        self.documents = AsyncDocuments(self._core)
-        self.memory = AsyncMemory(self._core)
-        self.erasure = AsyncErasure(self._core)
-        self.exports = AsyncExports(self._core)
-        self.legal_holds = AsyncLegalHolds(self._core)
-        self.access_tokens = AsyncAccessTokens(self._core)
 
     async def __aenter__(self) -> Self:
         return self
@@ -289,33 +223,55 @@ class AsyncDataClient:
 
     async def aclose(self) -> None:
         await self._core.close()
-        await self._storage.close()
 
-    @property
-    def http(self) -> httpx.AsyncClient:
-        return self._core.http
+    async def run(self, query: str, *, limit: int = 1000, wait_s: int = 30) -> JsonObject:
+        run = _object(
+            await self._core.call(
+                "POST", "/sql/statements", json={"sql": query, "limit": limit, "wait_s": wait_s}
+            )
+        )
+        while _text(run, "state") in _RUNNING:
+            await asyncio.sleep(_POLL_S)
+            run = _object(await self._core.call("GET", f"/runs/{_text(run, 'id')}"))
+        return run
 
-    async def request(self, method: str, path: str, **kwargs: Any) -> Any:
-        return await self._core.call(method, path, **kwargs)
+    async def rows(self, query: str, *, limit: int = 1000) -> QueryResult:
+        return result_of(await self.run(query, limit=limit))
 
-    def stream(self, query: str, **options: Any):
-        return self.sql.stream(query, **options)
+    async def _children(self, parent: str) -> list[JsonObject]:
+        suffix = f"?parent_id={parent}" if parent else ""
+        return _items(await self._core.call("GET", f"/securables{suffix}"))
 
-    async def arrow(self, query: str, **options: Any):
-        return await self.sql.arrow(query, **options)
+    async def tables(self) -> list[str]:
+        names: list[str] = []
+        for catalog in await self._children(""):
+            for schema in await self._children(_text(catalog, "id")):
+                if _text(schema, "kind") != "schema":
+                    continue
+                for entry in await self._children(_text(schema, "id")):
+                    if _text(entry, "kind") == "table":
+                        names.append(
+                            f"{_text(catalog, 'name')}.{_text(schema, 'name')}.{_text(entry, 'name')}"
+                        )
+        return sorted(names)
 
-    async def search(self, text: str = "", *, limit: int = 25) -> list[dict[str, Any]]:
-        return await self.catalog.search(text, limit=limit)
+    async def describe(self, full_name: str) -> TableInfo:
+        parts = full_name.split(".")
+        if len(parts) != 3:
+            raise InvalidRequestError(400, {"detail": "name a table as catalog.schema.table"})
+        parent = ""
+        entry: JsonObject = {}
+        for part in parts:
+            match = [c for c in await self._children(parent) if _text(c, "name") == part]
+            if not match:
+                raise NotFoundError(
+                    404, {"detail": f"{full_name} was not found, or you may not read it"}
+                )
+            entry = match[0]
+            parent = _text(entry, "id")
+        return table_info(
+            entry, full_name, _object(await self._core.call("GET", f"/tables/{parent}"))
+        )
 
-    async def describe(self, full_name: str, *, sample: int = 5) -> dict[str, Any]:
-        try:
-            info = {"kind": "table", **await self.catalog.table(full_name)}
-        except NotFoundError:
-            info = {"kind": "view", **await self.catalog.view(full_name)}
-        if sample:
-            query = f"SELECT * FROM {full_name} LIMIT {int(sample)}"
-            try:
-                info["sample"] = await self.sql(query)
-            except ImportError:
-                info["sample"] = await self.sql.rows(query)
-        return info
+
+__all__ = ["API_VERSION", "AsyncDataClient", "DataClient", "result_of"]
