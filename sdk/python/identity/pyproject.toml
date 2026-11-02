@@ -1,6 +1,6 @@
 [project]
 name = "loamz-identity"
-version = "0.1.0"
+version = "0.2.0"
 description = "Credentials for the Loamz client libraries: service accounts and the default credential chain."
 readme = "README.md"
 license = "Apache-2.0"
