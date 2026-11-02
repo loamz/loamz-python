@@ -24,7 +24,7 @@ jobs:
       released: ${{ steps.rp.outputs.paths_released }}
       tags: ${{ steps.rp.outputs.releases_created }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: rp
         with:
           config-file: release-please-config.json
