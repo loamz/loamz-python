@@ -1,0 +1,1704 @@
+openapi: 3.1.0
+info:
+  title: Loamz Data
+  version: 1.0.0
+  description: The governed data API. Every call carries a Keycloak bearer token for the audience `loamz-data`, and is checked by IAM; every refusal
+    and change is recorded in the organization's audit chain. Errors are RFC 9457 problem documents. A caller who may not see a thing is told
+    it does not exist (404), never that it is forbidden.
+servers:
+- url: /
+security:
+- bearer: []
+paths:
+  /healthz:
+    get:
+      summary: The process is up.
+      parameters: []
+      responses:
+        '200':
+          description: OK
+      security: []
+  /readyz:
+    get:
+      summary: The database answers.
+      parameters: []
+      responses:
+        '200':
+          description: OK
+        '500':
+          $ref: '#/components/responses/Problem'
+      security: []
+  /api/v1/me:
+    get:
+      summary: Who the token says the caller is, their organizations (including their own space) and the workspaces they can open.
+      parameters: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+      description: A person's own space and a workspace in it are made on first use.
+  /api/v1/orgs/{org}/account:
+    post:
+      summary: Create the Data account of an organization the caller belongs to. Needs the Keycloak role `account-admin`; the creator becomes
+        its first admin.
+      parameters:
+      - &id001
+        name: org
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 'An organization id: the Keycloak organization id, or personal:<subject> for your own space.'
+      responses:
+        '201':
+          description: Created
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/admins:
+    get:
+      summary: Who manages the account (account admins).
+      parameters:
+      - *id001
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    put:
+      summary: Make a principal an account admin.
+      parameters:
+      - *id001
+      responses:
+        '204':
+          description: Added
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Principal'
+  /api/v1/orgs/{org}/admins/{principal}:
+    delete:
+      summary: Take away admin rights. An account always keeps one admin.
+      parameters:
+      - *id001
+      - &id003
+        name: principal
+        in: path
+        required: true
+        schema:
+          type: string
+        description: user:<id>, group:<path> or sp:<id>, percent-encoded.
+      responses:
+        '204':
+          description: Removed
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/workspaces:
+    get:
+      summary: The workspaces of the organization the caller can open.
+      parameters:
+      - *id001
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    post:
+      summary: Create a workspace. Account admins only; the creator becomes its admin.
+      parameters:
+      - *id001
+      responses:
+        '201':
+          description: Created
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Name'
+  /api/v1/workspaces/{ws}:
+    get:
+      summary: One workspace, and the caller's standing in it.
+      parameters:
+      - &id002
+        name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+        description: A workspace id.
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    put:
+      summary: Rename a workspace (account admins).
+      parameters:
+      - *id002
+      responses:
+        '200':
+          description: OK
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Name'
+    delete:
+      summary: Delete a workspace and its assignments. Catalogs are not touched.
+      parameters:
+      - *id002
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/members:
+    get:
+      summary: Who is assigned to the workspace, and as what. Workspace admins.
+      parameters:
+      - *id002
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    put:
+      summary: Assign a person, group or service principal as `admin` or `user`, or change their role.
+      parameters:
+      - *id002
+      responses:
+        '204':
+          description: Assigned
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Assign'
+  /api/v1/workspaces/{ws}/members/{principal}:
+    delete:
+      summary: Take a principal out of the workspace. A workspace keeps one admin.
+      parameters:
+      - *id002
+      - *id003
+      responses:
+        '204':
+          description: Removed
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/entitlements:
+    get:
+      summary: What assigned principals are entitled to.
+      parameters:
+      - *id002
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    put:
+      summary: Give an entitlement (`sql-access`, `compute-create`, `sandbox-access`) to an assigned principal.
+      parameters:
+      - *id002
+      responses:
+        '204':
+          description: Given
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Entitle'
+  /api/v1/workspaces/{ws}/entitlements/{principal}/{entitlement}:
+    delete:
+      summary: Take an entitlement away.
+      parameters:
+      - *id002
+      - *id003
+      - name: entitlement
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Removed
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/catalogs:
+    get:
+      summary: The catalogs bound to this workspace (none bound anywhere means a catalog is visible in every workspace).
+      parameters:
+      - *id002
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/catalogs/{catalog}:
+    put:
+      summary: Bind a catalog to this workspace. Account admins.
+      parameters:
+      - *id002
+      - name: catalog
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Bound
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    delete:
+      summary: Remove a binding.
+      parameters:
+      - *id002
+      - name: catalog
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Unbound
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/securables:
+    post:
+      summary: Create a catalog, schema, table, volume or view. Needs the matching CREATE privilege on the parent (CREATE CATALOG on the metastore).
+        The creator owns it.
+      parameters:
+      - *id002
+      responses:
+        '201':
+          description: Created
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSecurable'
+    get:
+      summary: List what is directly inside a parent (the metastore when `parent_id` is empty) that the caller may see from this workspace.
+      parameters:
+      - *id002
+      - name: parent_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Empty for catalogs.
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/securables/{id}:
+    get:
+      summary: One entry.
+      parameters:
+      - *id002
+      - &id004
+        name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: A securable id, or `metastore` where grants are concerned.
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    delete:
+      summary: Drop an entry and everything inside it. Needs MANAGE. The entry disappears at once; the bytes are removed by a durable task.
+      parameters:
+      - *id002
+      - *id004
+      responses:
+        '202':
+          description: A drop task was queued
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/securables/{id}/owner:
+    put:
+      summary: Hand an entry to a new owner. Needs MANAGE.
+      parameters:
+      - *id002
+      - *id004
+      responses:
+        '204':
+          description: Done
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Owner'
+  /api/v1/workspaces/{ws}/securables/{id}/grants:
+    get:
+      summary: Who holds what directly here. Needs MANAGE.
+      parameters:
+      - *id002
+      - *id004
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    put:
+      summary: Give a principal a role (reader, contributor, owner) here. The USE privileges are placed on the catalog and schema above. Needs
+        MANAGE.
+      parameters:
+      - *id002
+      - *id004
+      responses:
+        '204':
+          description: Granted
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantRole'
+  /api/v1/workspaces/{ws}/securables/{id}/grants/{principal}:
+    delete:
+      summary: Take away everything a principal holds directly here. Needs MANAGE.
+      parameters:
+      - *id002
+      - *id004
+      - *id003
+      responses:
+        '204':
+          description: Revoked
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/volumes/{id}/files:
+    get:
+      summary: List the files of a volume. Needs READ VOLUME.
+      parameters:
+      - *id002
+      - *id004
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/volumes/{id}/files/{path}:
+    put:
+      summary: Upload a file (the request body is its bytes). Needs WRITE VOLUME.
+      parameters:
+      - *id002
+      - *id004
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+        allowReserved: true
+      responses:
+        '201':
+          description: Stored
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '413':
+          $ref: '#/components/responses/Problem'
+    get:
+      summary: Download a file, always as an attachment. Needs READ VOLUME.
+      parameters:
+      - *id002
+      - *id004
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    delete:
+      summary: Delete one file. Needs WRITE VOLUME.
+      parameters:
+      - *id002
+      - *id004
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+        allowReserved: true
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/erase:
+    post:
+      summary: Erase a principal's data in this organization. Account admins.
+      parameters:
+      - *id001
+      responses:
+        '202':
+          description: An erase task was queued
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+      description: Queues a durable task that removes everything the principal owns, their files, grants, workspace assignments and admin rights,
+        and checks it is gone. The audit trail is kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Erase'
+  /api/v1/orgs/{org}/tasks/{id}:
+    get:
+      summary: The state of a drop or erase task. Account admins.
+      parameters:
+      - *id001
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/audit:
+    get:
+      summary: The organization's recent audit entries, newest first. Account admins.
+      parameters:
+      - *id001
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/audit/verify:
+    get:
+      summary: Walk the organization's whole hash chain. Account admins.
+      parameters:
+      - *id001
+      responses:
+        '200':
+          description: '`intact`, the entry count, and the first broken entry if any'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/auth/token:
+    post:
+      summary: The sign-in token exchange, done by the server for the browser.
+      description: 'Every workspace is its own website, and the identity provider only lets exact addresses call its token endpoint from a page.
+        The page asks its own server, which asks the identity provider directly. Only `authorization_code` (with `code`, `redirect_uri`, `code_verifier`)
+        and `refresh_token` pass, always as the `loamz-data` client. Needs no token: it is how a page gets one.'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: The identity provider's token answer
+        '400':
+          $ref: '#/components/responses/Problem'
+        '502':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/compute/targets/{id}/start:
+    post:
+      summary: Start serverless compute now (it also starts when a statement arrives). Account admins. A machine is started on the machine itself.
+      parameters:
+      - name: org
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Done
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/compute/targets/{id}/stop:
+    post:
+      summary: Stop serverless compute now (it also stops a minute after its last statement). Account admins.
+      parameters:
+      - name: org
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Done
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/compute/providers:
+    get:
+      summary: The kinds of compute this server can create for an organization.
+      parameters:
+      - name: org
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/compute/providers:
+    get:
+      summary: The kinds of compute this server can create (a serverless SQL warehouse, a machine of your own) and whether each is available.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/iceberg/v1/config:
+    get:
+      summary: The Iceberg REST catalog's configuration. The warehouse is the name of a catalog.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: warehouse
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/iceberg/v1/{prefix}/namespaces:
+    get:
+      summary: List the schemas of a catalog (Iceberg namespaces).
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: prefix
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    post:
+      summary: Create a schema. Needs CREATE SCHEMA.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: prefix
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/iceberg/v1/{prefix}/namespaces/{ns}:
+    get:
+      summary: Whether a schema is there for the caller.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: prefix
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ns
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/iceberg/v1/{prefix}/namespaces/{ns}/tables:
+    get:
+      summary: List the tables of a schema.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: prefix
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ns
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    post:
+      summary: Create an Iceberg table, or stage one (stage-create) for a commit that completes it. Needs CREATE TABLE.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: prefix
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ns
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/iceberg/v1/{prefix}/namespaces/{ns}/tables/{t}:
+    get:
+      summary: Load a table, with its metadata and credentials for its folder only (read-only unless the caller has MODIFY). Needs SELECT.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: prefix
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ns
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: t
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    post:
+      summary: Commit a change to a table (or finish creating it). Needs MODIFY. A change made on an older version is a 409.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: prefix
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: ns
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: t
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/iceberg/v1/{prefix}/transactions/commit:
+    post:
+      summary: Commit one table's change, as Iceberg clients send it.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: prefix
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/tables:
+    post:
+      summary: Create an Iceberg table from a list of columns. Needs CREATE TABLE.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/tables/{id}/stats:
+    get:
+      summary: Per-column counts, nulls and ranges from what the table's files recorded about themselves; no data is read and no compute is used. Needs SELECT.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/tables/{id}:
+    get:
+      summary: A table's columns and snapshots. Needs only that the caller can see it.
+      parameters:
+      - name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/compute/targets:
+    get:
+      summary: The compute attached to the workspace's organization, and whether each is answering.
+      parameters:
+      - &id007
+        name: ws
+        in: path
+        required: true
+        schema:
+          type: string
+        description: A workspace id.
+      responses:
+        '200':
+          description: The targets
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/sql/statements:
+    post:
+      summary: Run a SQL statement and wait a while for its rows.
+      description: 'Needs the `sql-access` entitlement and `SELECT` on every table it reads. The statement is parsed first: only one plain query
+        is accepted, and every table must be named `catalog.schema.table`. It comes back finished (200) or still running (202), with the run''s
+        id to ask about. When input access cannot be verified the response has result_access=restricted and omits rows and output.'
+      parameters:
+      - *id007
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Statement'
+      responses:
+        '200':
+          description: The finished run, with its rows
+        '202':
+          description: Still running
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/runs:
+    post:
+      summary: 'Run a job: a Python script with read-only inputs and one output volume.'
+      description: Needs the `compute-create` entitlement, `SELECT` or `READ VOLUME` on each input and `WRITE VOLUME` on the output.
+      parameters:
+      - *id007
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Job'
+      responses:
+        '202':
+          description: Queued
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+    get:
+      summary: 'The workspace''s runs, newest first: your own, or everyone''s for a workspace admin.'
+      parameters:
+      - *id007
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: by
+        in: query
+        required: false
+        description: Only what this person asked for (a workspace admin's narrowing; everyone else is shown their own).
+        schema:
+          type: string
+      - name: target
+        in: query
+        required: false
+        description: Only runs on this compute.
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        description: queued, running, succeeded, failed, cancelled or timed_out.
+        schema:
+          type: string
+      - name: since_ms
+        in: query
+        required: false
+        description: Only runs asked for at or after this time.
+        schema:
+          type: integer
+      - name: before_ms
+        in: query
+        required: false
+        description: 'The page cursor: the created_ms of the oldest run of the page before.'
+        schema:
+          type: integer
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: The runs, without their rows or output
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/queries:
+    get:
+      summary: 'Saved queries, newest change first: your own, or everyone''s for a workspace admin.'
+      parameters:
+      - *id007
+      responses:
+        '200':
+          description: The saved queries
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    post:
+      summary: Save a query (a name and the SQL).
+      parameters:
+      - *id007
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: Saved
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/queries/{id}:
+    get:
+      summary: One saved query.
+      parameters:
+      - *id007
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The saved query
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    put:
+      summary: Change a saved query.
+      parameters:
+      - *id007
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Saved
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    delete:
+      summary: Delete a saved query.
+      parameters:
+      - *id007
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Deleted
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/runs/{id}:
+    get:
+      summary: One run, with its history and, when authorized, its rows and output.
+      description: 'When input access cannot be verified, result_access is restricted and results, logs, errors and input metadata are omitted. A directly submitted SQL statement remains visible to its submitter. Full details use result_access=available.'
+      parameters:
+      - *id007
+      - &id008
+        name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The run with result_access indicating whether output is available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunDetails'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/workspaces/{ws}/runs/{id}/cancel:
+    post:
+      summary: 'Stop a run: at once if it has not started, otherwise when its compute next checks in.'
+      parameters:
+      - *id007
+      - *id008
+      responses:
+        '202':
+          description: Stopping
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/compute/targets:
+    get:
+      summary: The attached compute. Account admins.
+      parameters:
+      - &id009
+        name: org
+        in: path
+        required: true
+        schema:
+          type: string
+        description: An organization id.
+      responses:
+        '200':
+          description: The targets
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    post:
+      summary: Attach compute. Account admins.
+      description: The answer carries the agent's secret, once. Only a hash of it is kept.
+      parameters:
+      - *id009
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Target'
+      responses:
+        '201':
+          description: Attached, with its secret
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/compute/targets/{id}:
+    delete:
+      summary: Remove compute. What was waiting or running on it fails. Account admins.
+      parameters:
+      - *id009
+      - *id008
+      responses:
+        '204':
+          description: Removed
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/orgs/{org}/compute/targets/{id}/secret:
+    post:
+      summary: Give the compute a new secret; the agent using the old one is turned away. Account admins.
+      parameters:
+      - *id009
+      - *id008
+      responses:
+        '200':
+          description: The new secret, once
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/agent/lease:
+    post:
+      summary: An agent asks for its next piece of work.
+      description: 'Waits up to 20 seconds (or `wait_s`, at most 25) for work. The answer carries a run and the token that run''s files are read
+        and written with: the person it runs for, narrowed to the tables and volumes it declared, for this workspace only, and dead when the run
+        ends.'
+      security: &id010
+      - agent: []
+      parameters:
+      - name: wait_s
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: A run and its token
+        '204':
+          description: Nothing is waiting
+        '401':
+          $ref: '#/components/responses/Problem'
+  /api/v1/agent/runs/{id}/heartbeat:
+    post:
+      summary: An agent says it is still working on a run, and hears whether it was cancelled.
+      security: *id010
+      parameters:
+      - *id008
+      responses:
+        '200':
+          description: '`cancel` says whether to stop'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /api/v1/agent/runs/{id}/complete:
+    post:
+      summary: An agent says how a run ended, with its rows or output.
+      security: *id010
+      parameters:
+      - *id008
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Report'
+      responses:
+        '204':
+          description: Recorded
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    agent:
+      type: http
+      scheme: bearer
+      description: "A compute agent's own secret (agt_\u2026), shown once when the compute is attached."
+  responses:
+    Problem:
+      description: An RFC 9457 problem document.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    RunDetails:
+      type: object
+      required:
+      - id
+      - kind
+      - state
+      - result_access
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [sql, job]
+        state:
+          type: string
+        result_access:
+          type: string
+          enum: [available, restricted]
+        spec:
+          type: object
+        stdout:
+          type: string
+        stderr:
+          type: string
+        result:
+          type: object
+          nullable: true
+      additionalProperties: true
+    Problem:
+      type: object
+      required:
+      - type
+      - title
+      - status
+      - detail
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+    Principal:
+      type: object
+      required:
+      - principal
+      properties:
+        principal:
+          type: string
+    Name:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+    Assign:
+      type: object
+      required:
+      - principal
+      - role
+      properties:
+        principal:
+          type: string
+        role:
+          enum:
+          - admin
+          - user
+    Entitle:
+      type: object
+      required:
+      - principal
+      - entitlement
+      properties:
+        principal:
+          type: string
+        entitlement:
+          enum:
+          - sql-access
+          - compute-create
+          - sandbox-access
+    CreateSecurable:
+      type: object
+      required:
+      - kind
+      - name
+      properties:
+        kind:
+          enum:
+          - catalog
+          - schema
+          - table
+          - volume
+          - view
+        parent_id:
+          type: string
+        name:
+          type: string
+          description: Lower case letters, digits and underscores, starting with a letter.
+        classification:
+          enum:
+          - normal
+          - personal
+          - sealed
+        placement:
+          enum:
+          - local
+        consistency:
+          enum:
+          - transaction
+          - snapshot
+          description: A volume can only promise snapshot.
+    Owner:
+      type: object
+      required:
+      - owner
+      properties:
+        owner:
+          type: string
+    GrantRole:
+      type: object
+      required:
+      - principal
+      - role
+      properties:
+        principal:
+          type: string
+        role:
+          enum:
+          - reader
+          - contributor
+          - owner
+    Erase:
+      type: object
+      required:
+      - subject
+      properties:
+        subject:
+          type: string
+          description: A typed principal such as user:<id>.
+    TokenRequest:
+      type: object
+      required:
+      - grant_type
+      properties:
+        grant_type:
+          enum:
+          - authorization_code
+          - refresh_token
+        code:
+          type: string
+        redirect_uri:
+          type: string
+        code_verifier:
+          type: string
+        refresh_token:
+          type: string
+    Statement:
+      type: object
+      required:
+      - sql
+      properties:
+        sql:
+          type: string
+        limit:
+          type: integer
+          description: Rows to return, at most 10000 (default 1000).
+        target:
+          type: string
+        wait_s:
+          type: integer
+          description: Seconds to wait for the answer, at most 60 (default 30).
+    Job:
+      type: object
+      required:
+      - script
+      - output
+      properties:
+        title:
+          type: string
+        script:
+          type: string
+        inputs:
+          type: array
+          items:
+            type: string
+          description: Table or volume ids, mounted read-only under /inputs/<name>.
+        output:
+          type: string
+          description: 'A volume id: what the script leaves in /workspace is saved there under runs/<run id>/.'
+        target:
+          type: string
+        memory_mb:
+          type: integer
+        cpu_millis:
+          type: integer
+        timeout_s:
+          type: integer
+    Target:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+        max_memory_mb:
+          type: integer
+          description: Default 2048.
+        max_cpu_millis:
+          type: integer
+          description: Default 1000.
+    Report:
+      type: object
+      required:
+      - state
+      properties:
+        state:
+          enum:
+          - succeeded
+          - failed
+          - cancelled
+          - timed_out
+        exit_code:
+          type: integer
+        stdout:
+          type: string
+        stderr:
+          type: string
+        result:
+          type: string
+          description: A statement's rows, as JSON text.
+        error:
+          type: string
