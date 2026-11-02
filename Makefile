@@ -17,3 +17,4 @@ test:
 	cd sdk/python/identity && uv run --package loamz-identity pytest $(PYTEST)
 	cd sdk/python/data && uv run --package loamz-data pytest $(PYTEST)
 	cd sdk/python/agents && uv run --package loamz-agents pytest $(PYTEST)
+	uv run pytest meta -q
