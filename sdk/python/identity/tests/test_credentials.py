@@ -27,7 +27,7 @@ class Recorder:
 
 def client(*responses, credential):
     recorder = Recorder(*responses)
-    api = DataClient("http://data.test", credential, transport=httpx.MockTransport(recorder))
+    api = DataClient("http://data.test", credential, workspace="ws", transport=httpx.MockTransport(recorder))
     return api, recorder, []
 
 
@@ -86,6 +86,7 @@ def test_client_credentials_work_with_the_async_client(monkeypatch):
         async with AsyncDataClient(
             "http://data.test",
             ClientSecretCredential("https://idp/realms/x", "svc", "s"),
+            workspace="ws",
             transport=httpx.MockTransport(recorder),
         ) as api:
             await api.request("GET", "/x")
