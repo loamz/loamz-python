@@ -47,8 +47,8 @@ def test_client_credentials_fetch_once_and_cache_until_near_expiry(monkeypatch):
         "https://idp/realms/x/", "svc", "s3cret", scope="data:read"
     )
     api, recorder, _ = client(httpx.Response(200, json={}), credential=credentials)
-    api.request("GET", "/x")
-    api.request("GET", "/x")
+    api._core.call("GET", "/x")
+    api._core.call("GET", "/x")
     assert len(issued) == 1 and issued[0][0] == "https://idp/realms/x/protocol/openid-connect/token"
     assert (
         issued[0][1]["grant_type"] == "client_credentials" and issued[0][1]["scope"] == "data:read"
@@ -89,8 +89,8 @@ def test_client_credentials_work_with_the_async_client(monkeypatch):
             workspace="ws",
             transport=httpx.MockTransport(recorder),
         ) as api:
-            await api.request("GET", "/x")
-            await api.request("GET", "/x")
+            await api._core.call("GET", "/x")
+            await api._core.call("GET", "/x")
 
     asyncio.run(run())
     assert len(seen) == 1 and bearer(recorder.requests[1]) == "Bearer async-jwt"
